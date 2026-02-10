@@ -5,10 +5,10 @@ require 'SimplePdo.php';
 use Phpml\Math\Statistic\Mean; // Para la media (PARTE D)
 
 //Configurar base de datos
-$db_host = '127.0.0.1';
+$db_host = '127.0.0.1'; // Cambiar si lo pruebo en Windows
 $db_name = 'videojuegos_db';
-$db_user = 'root';
-$db_pass = '';
+$db_user = 'moises';  // usuario de clase
+$db_pass = 'Peluchin1';
 
 // 2. Registrar la clase SimplePdo en Flight
 Flight::register('db', 'SimplePdo', [$db_host, $db_name, $db_user, $db_pass]);
