@@ -10,12 +10,11 @@ $db_name = 'videojuegos_db';
 $db_user = 'moises';  // usuario de clase
 $db_pass = 'Peluchin1';
 
-// 2. Registrar la clase SimplePdo en Flight
+// Registrar la clase SimplePdo en Flight
 Flight::register('db', 'SimplePdo', [$db_host, $db_name, $db_user, $db_pass]);
 
 //PARTE A
-
-// A.1: GET /recursos (Obtener todos los videojuegos)
+// GET (Obtener todos los videojuegos)
 Flight::route('GET /videojuegos', function(){
     $db = Flight::db();
     $sentencia = $db->query("SELECT * FROM videojuegos");
@@ -24,186 +23,158 @@ Flight::route('GET /videojuegos', function(){
     Flight::json($datos);
 });
 
-// A.2: GET /recursos/{id} (Obtener uno por ID)
+// GET (Obtener uno por ID)
 Flight::route('GET /videojuegos/@id', function($id){
     $db = Flight::db();
     
-    // Usamos sentencias preparadas por seguridad
-    $sentencia = $db->prepare("SELECT * FROM videojuegos WHERE id = ?");
-    $sentencia->execute([$id]);
-    $dato = $sentencia->fetch();
+    // variables de busqueda
+    $sql = "SELECT * FROM videojuegos WHERE id = $id";
+    $videojuego = $db->query($sql) ->fetch() ;
 
-    if ($dato) {
-        Flight::json($dato);
+
+    if ($videojuego) {
+        Flight::json($videojuego);
     } else {
         // Retornar 404 si no existe
         Flight::halt(404, json_encode([
-            "status" => "error",
-            "message" => "Videojuego no encontrado"
+            "error" => "Videojuego no encontrado"
         ]));
     }
 });
 
-// A.3: POST /recursos (Insertar nuevo videojuego)
+// POST (Insertar nuevo videojuego)
 Flight::route('POST /videojuegos', function(){
     $request = Flight::request();
     $db = Flight::db();
 
-    // Recogemos los datos del cuerpo de la petición (JSON o Form)
+    // Recogemos los datos
     $compania = $request->data->compania;
     $consola = $request->data->consola;
     $videojuego = $request->data->videojuego;
     $precio = $request->data->precio;
     $puntuacion = $request->data->puntuacion;
 
-    // Validación básica
+    // Validación 
     if(!$compania || !$consola || !$videojuego) {
         Flight::halt(400, json_encode(["error" => "Faltan datos (compania, consola, videojuego)"]));
     }
 
-    try {
-        $sql = "INSERT INTO videojuegos (compania, consola, videojuego) VALUES (?, ?, ?)";
+        $sql = "INSERT INTO videojuegos (compania, consola, videojuego, precio, puntuacion) VALUES (?, ?, ?, ?, ?)";
         $sentencia = $db->prepare($sql);
-        $sentencia->execute([$compania, $consola, $videojuego]);
+        
+        $sentencia->execute([$compania, $consola, $videojuego, $precio, $puntuacion]);
 
         Flight::json([
-            "status" => "success",
             "message" => "Videojuego insertado correctamente",
             "id" => $db->lastInsertId()
         ]);
-    } catch (Exception $e) {
-        Flight::halt(500, json_encode(["error" => $e->getMessage()]));
-    }
+
 });
 
-// --- PARTE B: Consumo de API Externa (DummyJson) ---
+//PARTE B (DummyJson)
 
-Flight::route('GET /importar-dummy', function(){
+Flight::route('GET /importar', function() {
     $db = Flight::db();
+    
+    // 1. Consumir la API externa (Pedimos Laptops)
+    $url = 'https://dummyjson.com/products/category/laptops';
+    $response = file_get_contents($url);
+    $data = json_decode($response, true);
+    
+    $insertados = 0;
 
-    // 1. Consumir la API de DummyJson
-    // Pedimos 5 productos de categoría 'laptops' para simular consolas/PCs
-    $url = 'https://dummyjson.com/products/category/laptops?limit=5';
-    
-    // Usamos file_get_contents para leer la URL (método nativo sencillo)
-    $json_data = file_get_contents($url);
-    
-    if($json_data === false) {
-        Flight::halt(500, json_encode(["error" => "No se pudo conectar con DummyJson"]));
+    // 2. Proceso de mapeo y guardado
+    foreach ($data['products'] as $item) {
+        
+        // mapeo de los datos 
+
+        // La MARCA del portátil pasa a ser la COMPAÑÍA
+        $compania = $item['brand']; 
+        $consola = "PC Portátil"; 
+        // El MODELO del portátil pasa a ser un simulador VIDEOJUEGO 
+        $videojuego = "Simulador de " . $item['title'];
+        $precio = $item['price']; 
+        // El RATING se multiplica por 20 para que sea sobre 100
+        $puntuacion = (int)($item['rating'] * 20);
+
+        $sql = "INSERT INTO videojuegos (compania, consola, videojuego, precio, puntuacion) VALUES (?, ?, ?, ?, ?)";
+        $post = $db->prepare($sql);
+        $post->execute([$compania, $consola, $videojuego, $precio, $puntuacion]);
+        
+        $insertados++;
     }
 
-    $respuesta = json_decode($json_data, true); // Convertir JSON a Array asociativo
-    $productos = $respuesta['products']; // DummyJson devuelve la lista dentro de "products"
-
-    $guardados = 0;
-
-    // 2. Procesar, Mapear y Modificar datos
-    foreach($productos as $prod) {
-        
-        // --- MAPEO DE CAMPOS ---
-        // La API trae "brand", nosotros queremos "compania"
-        // La API trae "category", nosotros queremos "consola"
-        // La API trae "title", nosotros queremos "videojuego"
-
-        $compania = $prod['brand'] ?? 'Generico'; 
-        
-        // --- MODIFICACIÓN DE VALOR (Requisito de la práctica) ---
-        // Vamos a poner la consola en MAYÚSCULAS para cumplir el requisito
-        $consola = strtoupper($prod['category']); 
-        
-        // Vamos a añadir un prefijo al nombre del juego
-        $videojuego = "Edición Coleccionista: " . $prod['title'];
-
-        // 3. Insertar en nuestra Base de Datos
-        try {
-            $sql = "INSERT INTO videojuegos (compania, consola, videojuego) VALUES (?, ?, ?)";
-            $stmt = $db->prepare($sql);
-            $stmt->execute([$compania, $consola, $videojuego]);
-            $guardados++;
-        } catch (Exception $e) {
-            // Si falla uno, continuamos con el siguiente (o podrías parar)
-            continue;
-        }
-    }
-
-    // 4. Responder al cliente
     Flight::json([
-        "status" => "success",
-        "origen" => "DummyJson",
-        "mensaje" => "Se han importado y transformado $guardados registros correctamente."
+        "mensaje" => "Importacion completada con exito",
+        "registros_insertados" => $insertados,
     ]);
 });
 
-// --- PARTE C: Servicio "Juego Sorpresa" (Simplificado) ---
+// PARTE C
 
-Flight::route('GET /juego-sorpresa', function(){
+Flight::route('GET /juego-aleatorio', function(){
     
-    // 1. URL de la API (Pedimos todos los juegos de PC)
+    //URL de la API Freetogame
     $url = "https://www.freetogame.com/api/games?platform=pc";
 
-    // 2. Truco para que la API no nos bloquee (User-Agent simple)
-    $opciones = ['http' => ['header' => "User-Agent: MiScriptPHP"]];
-    $contexto = stream_context_create($opciones);
+    $datos = @file_get_contents($url);
 
-    // 3. Descargar y convertir JSON
-    $datos = file_get_contents($url, false, $contexto);
+    //Descargar y convertir JSON
+    if ($datos === false) {
+            Flight::halt(500, json_encode(["error" => "La API externa no respondió"]));
+        }    
+    
     $lista_juegos = json_decode($datos, true);
 
-    // 4. Lógica simple: Elegir UN juego al azar de la lista
-    $indice_azar = array_rand($lista_juegos);
-    $juego_seleccionado = $lista_juegos[$indice_azar];
+    //variables para elegir juego al azar
+    $juego_aleatorio = array_rand($lista_juegos);
+    $juego = $lista_juegos[$juego_aleatorio];
 
-    // 5. Devolver ese juego directamente
+    // Devuelve el juego
     Flight::json([
         "servicio" => "Generador de Juego Aleatorio",
-        "juego" => $juego_seleccionado
+        "juego" => $juego
     ]);
 });
 
-// --- PARTE D: Estadística con PHP-ML (Precio Medio por Compañía) ---
+//PARTE D:
 
 Flight::route('GET /estadisticas', function() {
     $db = Flight::db();
     
-    // 1. Recuperamos Compañía, Puntuación y PRECIO
+    //Guardamos solo Compañía, Puntuación y PRECIO
     $juegos = $db->query("SELECT compania, puntuacion, precio FROM videojuegos")->fetchAll();
-    
-    if (empty($juegos)) {
-        Flight::halt(404, json_encode(["error" => "No hay datos para analizar"]));
-    }
-
-    // 2. Agrupamos los datos
-    $datosPorCompania = [];
+ 
+    // Agrupamos los datos anteriores
+    $juegosCompania = [];
     
     foreach ($juegos as $j) {
         $compania = $j['compania'];
-        // Guardamos las notas y los precios en listas
-        $datosPorCompania[$compania]['notas'][]  = (int)$j['puntuacion'];
-        $datosPorCompania[$compania]['precios'][] = (float)$j['precio'];
+        // Guardamos las notas y los precios
+        $juegosCompania[$compania]['notas'][]  = (int)$j['puntuacion'];
+        $juegosCompania[$compania]['precios'][] = (float)$j['precio'];
     }
 
-    $analisis = [];
+    $media = [];
 
-    // 3. Calculamos las medias con PHP-ML (Mean::arithmetic)
-    foreach ($datosPorCompania as $compania => $valores) {
-        $analisis[$compania] = [
-            "cantidad_juegos" => count($valores['notas']),
+    //recorremos y calculamos las medias con PHP-ML (Mean::arithmetic)
+    foreach ($juegosCompania as $compania => $datos) {
+        $media[$compania] = [
+            "cantidad_juegos" => count($datos['notas']),
             
-            "nota_media"      => round(Mean::arithmetic($valores['notas']), 2),   
-            "precio_medio"    => round(Mean::arithmetic($valores['precios']), 2) . " €"
+            "nota_media"      => round(Mean::arithmetic($datos['notas']), 2),   
+            "precio_medio"    => round(Mean::arithmetic($datos['precios']), 2) . " €"
         ];
     }
 
-    // 4. Respuesta JSON
+    // Respuesta convertida a JSON
     Flight::json([
-        "titulo" => "Analisis Estadistico por precios y nota media (valoracion)",
-        "descripcion" => "Calculamos cuánto cuesta de media un juego de cada compañía usando PHP-ML",
-        "resultados" => $analisis
+        "titulo" => "Datos Estadistico por precios y valoracion",
+        "descripcion" => "Calculamos media de juego de cada compania",
+        "resultados" => $media
     ]);
 });
 
-
-// Iniciar Flight
 Flight::start();
 ?>
 
