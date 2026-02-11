@@ -117,7 +117,7 @@ Flight::route('GET /juego-aleatorio', function(){
     //URL de la API Freetogame
     $url = "https://www.freetogame.com/api/games?platform=pc";
 
-    $datos = @file_get_contents($url);
+    $datos = file_get_contents($url);
 
     //Descargar y convertir JSON
     if ($datos === false) {
