@@ -47,7 +47,7 @@ Flight::route('POST /videojuegos', function(){
     $request = Flight::request();
     $db = Flight::db();
 
-    // Recogemos los datos
+    // Recogemos los encabezados
     $compania = $request->data->compania;
     $consola = $request->data->consola;
     $videojuego = $request->data->videojuego;
